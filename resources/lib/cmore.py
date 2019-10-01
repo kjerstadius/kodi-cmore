@@ -31,7 +31,7 @@ class CMore(object):
         self.settings_folder = settings_folder
         self.credentials_file = os.path.join(settings_folder, 'credentials')
         self.config_path = os.path.join(self.settings_folder, 'configuration.json')
-        self.config_version = '3.8.0'
+        self.config_version = '3.14.1'
         self.config = self.get_config()
         self.client = 'cmore-kodi'
 
@@ -121,10 +121,11 @@ class CMore(object):
 
     def save_credentials(self, credentials):
         """Save credentials in JSON format."""
-        credentials_dict = json.loads(credentials)['data']
-        if self.get_credentials().get('remember_me'):
-            credentials_dict['remember_me'] = {}
-            credentials_dict['remember_me']['token'] = self.get_credentials()['remember_me']['token']  # resave token
+        credentials_dict = json.loads(credentials)
+        if credentials_dict.get('session') is None and self.get_credentials().get('session') is not None:
+            # Ensure session data is kept
+            credentials_dict['session'] = {}
+            credentials_dict['session'] = self.get_credentials()['session']
         with open(self.credentials_file, 'w') as fh_credentials:
             fh_credentials.write(json.dumps(credentials_dict))
 
@@ -155,37 +156,105 @@ class CMore(object):
 
     def login(self, username=None, password=None, operator=None):
         """Complete login process for C More."""
-        url = self.config['links']['accountAPI'] + 'session'
-        params = {
-            'client': self.client,
-            'legacy': 'true'
-        }
+        url = self.config['links']['accountDelta']
+        method = 'post'
+        params = { 'client': self.client }
+        headers = { 'content-type': 'application/json; charset=utf-8' }
 
-        if self.get_credentials().get('remember_me'):
-            method = 'put'
+        if self.get_credentials().get('session') is not None:
+            expected_object = 'me'
             payload = {
-                'locale': self.locale,
-                'remember_me': self.get_credentials()['remember_me']['token']
+                'operationName': 'userQuery',
+                'query': '''query userQuery {
+                                {0} {
+                                    __typename currentOrders {
+                                        __typename ...UserOrder
+                                    }
+                                    user { __typename ...UserDetail }
+                                }
+                            }
+                            fragment UserOrder on Order {
+                                __typename
+                                assetId
+                                displayName
+                                productGroupId
+                                orderId
+                                productId
+                            }
+                            fragment UserDetail on User {
+                                __typename
+                                userId
+                                acceptedCmoreTerms
+                                email
+                                firstName
+                                lastName
+                                username
+                            }'''.format(expected_object),
+                'variables': {}
             }
+            headers['authorization'] = self.get_credentials().get('session').get('token')
         else:
-            method = 'post'
+            expected_object = 'login'
             payload = {
-                'username': username,
-                'password': password
+                'operationName': 'LoginMutation',
+                'query': '''mutation
+                                LoginMutation($credentials: Credentials!,
+                                              $site: Site!) {
+                                    login(credentials: $credentials,
+                                          site: $site)
+                                        {
+                                            __typename currentOrders {
+                                                __typename ...UserOrder
+                                        }
+                                        session { __typename ...UserSession }
+                                        user { __typename ...UserDetail }
+                                    }
+                                }
+                                fragment UserOrder on Order {
+                                    __typename
+                                    assetId
+                                    displayName
+                                    productGroupId
+                                    orderId
+                                    productId
+                                }
+                                fragment UserSession on Session {
+                                    __typename
+                                    token
+                                    vimondToken
+                                }
+                                fragment UserDetail on User {
+                                    __typename
+                                    userId
+                                    acceptedCmoreTerms
+                                    email
+                                    firstName
+                                    lastName
+                                    username
+                                }''',
+                'variables': {
+                    'credentials': {
+                        'username': username,
+                        'password': password
+                    },
+                    'site': 'CMORE_{locale_suffix}'.format(locale_suffix=self.locale_suffix.upper())
+                }
             }
             if operator:
                 payload['country_code'] = self.locale_suffix
                 payload['operator'] = operator
 
-        credentials = self.make_request(url, method, params=params, payload=payload)
-        self.save_credentials(json.dumps(credentials))
+        credentials = self.make_request(url, method, params=params,
+                                        payload=json.dumps(payload),
+                                        headers=headers)
+        self.save_credentials(json.dumps(credentials.get('data').get(expected_object)))
 
     def get_stream(self, video_id):
         """Return stream data in a dict for a specified video ID."""
         init_data = self.get_playback_init()
         asset = self.get_playback_asset(video_id, init_data)
         url = '{playback_api}{media_uri}'.format(playback_api=init_data['envPlaybackApi'], media_uri=asset['mediaUri'])
-        headers = {'Authorization': 'Bearer {0}'.format(self.get_credentials().get('vimond_token'))}
+        headers = {'x-jwt': 'Bearer {0}'.format(self.get_credentials().get('session').get('token'))}
         stream = self.make_request(url, 'get', headers=headers)['playbackItem']
         return stream
 

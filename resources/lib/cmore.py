@@ -160,94 +160,34 @@ class CMore(object):
         method = 'post'
         params = { 'client': self.client }
         headers = { 'content-type': 'application/json; charset=utf-8' }
-
-        if self.get_credentials().get('session') is not None:
-            expected_object = 'me'
-            payload = {
-                'operationName': 'userQuery',
-                'query': '''query userQuery {
-                                {0} {
-                                    __typename currentOrders {
-                                        __typename ...UserOrder
-                                    }
-                                    user { __typename ...UserDetail }
+        payload = {
+            'operationName': 'LoginMutation',
+            'query': '''mutation
+                            LoginMutation($credentials: Credentials!,
+                                            $site: Site!) {
+                                login(credentials: $credentials,
+                                        site: $site)
+                                    {
+                                    session { __typename ...UserSession }
                                 }
                             }
-                            fragment UserOrder on Order {
+                            fragment UserSession on Session {
                                 __typename
-                                assetId
-                                displayName
-                                productGroupId
-                                orderId
-                                productId
-                            }
-                            fragment UserDetail on User {
-                                __typename
-                                userId
-                                acceptedCmoreTerms
-                                email
-                                firstName
-                                lastName
-                                username
-                            }'''.format(expected_object),
-                'variables': {}
+                                token
+                            }''',
+            'variables': {
+                'credentials': {
+                    'username': username,
+                    'password': password
+                },
+                'site': 'CMORE_{locale_suffix}'.format(locale_suffix=self.locale_suffix.upper())
             }
-            headers['authorization'] = self.get_credentials().get('session').get('token')
-        else:
-            expected_object = 'login'
-            payload = {
-                'operationName': 'LoginMutation',
-                'query': '''mutation
-                                LoginMutation($credentials: Credentials!,
-                                              $site: Site!) {
-                                    login(credentials: $credentials,
-                                          site: $site)
-                                        {
-                                            __typename currentOrders {
-                                                __typename ...UserOrder
-                                        }
-                                        session { __typename ...UserSession }
-                                        user { __typename ...UserDetail }
-                                    }
-                                }
-                                fragment UserOrder on Order {
-                                    __typename
-                                    assetId
-                                    displayName
-                                    productGroupId
-                                    orderId
-                                    productId
-                                }
-                                fragment UserSession on Session {
-                                    __typename
-                                    token
-                                    vimondToken
-                                }
-                                fragment UserDetail on User {
-                                    __typename
-                                    userId
-                                    acceptedCmoreTerms
-                                    email
-                                    firstName
-                                    lastName
-                                    username
-                                }''',
-                'variables': {
-                    'credentials': {
-                        'username': username,
-                        'password': password
-                    },
-                    'site': 'CMORE_{locale_suffix}'.format(locale_suffix=self.locale_suffix.upper())
-                }
-            }
-            if operator:
-                payload['country_code'] = self.locale_suffix
-                payload['operator'] = operator
+        }
 
         credentials = self.make_request(url, method, params=params,
                                         payload=json.dumps(payload),
                                         headers=headers)
-        self.save_credentials(json.dumps(credentials.get('data').get(expected_object)))
+        self.save_credentials(json.dumps(credentials.get('data').get('login')))
 
     def get_stream(self, video_id):
         """Return stream data in a dict for a specified video ID."""

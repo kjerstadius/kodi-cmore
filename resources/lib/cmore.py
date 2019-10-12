@@ -29,7 +29,6 @@ class CMore(object):
         self.locale_suffix = self.locale.split('_')[1].lower()
         self.http_session = requests.Session()
         self.settings_folder = settings_folder
-        self.credentials_file = os.path.join(settings_folder, 'credentials')
         self.config_path = os.path.join(self.settings_folder, 'configuration.json')
         self.config_version = '3.14.1'
         self.config = self.get_config()
@@ -119,33 +118,6 @@ class CMore(object):
         with open(self.config_path, 'w') as fh_config:
             fh_config.write(json.dumps(config_data))
 
-    def save_credentials(self, credentials):
-        """Save credentials in JSON format."""
-        credentials_dict = json.loads(credentials)
-        if credentials_dict.get('session') is None and self.get_credentials().get('session') is not None:
-            # Ensure session data is kept
-            credentials_dict['session'] = {}
-            credentials_dict['session'] = self.get_credentials()['session']
-        with open(self.credentials_file, 'w') as fh_credentials:
-            fh_credentials.write(json.dumps(credentials_dict))
-
-    def reset_credentials(self):
-        """Overwrite credentials with empty JSON data."""
-        credentials = {}
-        with open(self.credentials_file, 'w') as fh_credentials:
-            fh_credentials.write(json.dumps(credentials))
-
-    def get_credentials(self):
-        """Get JSON credentials file from disk and load it into a dictionary."""
-        try:
-            with open(self.credentials_file, 'r') as fh_credentials:
-                credentials_dict = json.loads(fh_credentials.read())
-                return credentials_dict
-        except IOError:
-            self.reset_credentials()
-            with open(self.credentials_file, 'r') as fh_credentials:
-                return json.loads(fh_credentials.read())
-
     def get_operators(self):
         """Return a list of TV operators supported by the C More login system."""
         url = self.config['links']['tveAPI'] + 'country/{0}/operator'.format(self.locale_suffix)
@@ -184,17 +156,23 @@ class CMore(object):
             }
         }
 
-        credentials = self.make_request(url, method, params=params,
-                                        payload=json.dumps(payload),
-                                        headers=headers)
-        self.save_credentials(json.dumps(credentials.get('data').get('login')))
+        response = self.make_request(url, method, params=params,
+                                     payload=json.dumps(payload),
+                                     headers=headers)
+        try:
+            session_token = response.get('data').get('login').get('session').get('token')
+        except AttributeError:
+            self.log('Server login response not in expected format. '
+                     'Perhaps the login API has changed?')
+            return None
+        return session_token
 
-    def get_stream(self, video_id):
+    def get_stream(self, video_id, session_token):
         """Return stream data in a dict for a specified video ID."""
         init_data = self.get_playback_init()
         asset = self.get_playback_asset(video_id, init_data)
         url = '{playback_api}{media_uri}'.format(playback_api=init_data['envPlaybackApi'], media_uri=asset['mediaUri'])
-        headers = {'x-jwt': 'Bearer {0}'.format(self.get_credentials().get('session').get('token'))}
+        headers = {'x-jwt': 'Bearer {0}'.format(session_token)}
         stream = self.make_request(url, 'get', headers=headers)['playbackItem']
         return stream
 

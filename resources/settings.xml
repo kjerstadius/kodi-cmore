@@ -12,6 +12,7 @@
       <setting id="infotext" type="text" label="30032" visible="eq(-6,true) + eq(2,)" enable="false" subsetting="true" default="" />
       <setting id="locale" type="text" visible="false" default="sv_SE" />
       <setting id="operator" type="text" visible="false" default="" />
+      <setting id="session_token" type="text" visible="false" default="" />
       <setting type="sep" />
       <setting id="ia_settings" type="action" label="30034" action="RunPlugin(plugin://plugin.video.cmore/ia_settings)" enable="System.HasAddon(inputstream.adaptive)" option="close" />
       <setting id="wv_proxy_port" value="8000" visible="false" />

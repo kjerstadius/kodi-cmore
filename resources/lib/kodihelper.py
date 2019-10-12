@@ -116,7 +116,7 @@ class KodiHelper(object):
             return True
 
     def check_for_credentials(self):
-        if not self.c.get_credentials():
+        if self.get_setting('session_token') == '':
             self.login_process()
         return True
 
@@ -124,7 +124,8 @@ class KodiHelper(object):
         username = self.get_setting('username')
         password = self.get_setting('password')
         operator = self.get_setting('operator')
-        self.c.login(username, password, operator)
+        self.set_setting('session_token',
+                         self.c.login(username, password, operator))
 
     def set_tv_provider_credentials(self):
         operator = self.get_setting('operator')
@@ -175,7 +176,6 @@ class KodiHelper(object):
         return self.get_setting('operator')
 
     def reset_credentials(self):
-        self.c.reset_credentials()
         self.set_setting('operator', '')
         self.set_setting('operator_title', '')
         self.set_setting('username', '')
@@ -209,7 +209,7 @@ class KodiHelper(object):
 
     def play(self, video_id):
         wv_proxy_base = 'http://localhost:' + str(self.get_setting('wv_proxy_port'))
-        stream = self.c.get_stream(video_id)
+        stream = self.c.get_stream(video_id, self.get_setting('session_token'))
         if stream['type'] == 'hls':
             protocol = 'hls'
         else:
